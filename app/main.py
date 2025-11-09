@@ -1,9 +1,15 @@
 from celery.result import AsyncResult
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, UploadFile
+from fastapi.params import File
+from starlette.responses import StreamingResponse
+
 from app.core.config import settings
+from app.services.storage import get_storage_backend
 import redis
 
 from celery_worker import add, celery_app
+
+storage = get_storage_backend()
 
 app = FastAPI(title=settings.PROJECT_NAME)
 
@@ -46,3 +52,26 @@ def get_task_status(task_id: str):
         response["error"] = str(task.result)
 
     return response
+
+
+@app.post("/files/upload")
+async def upload_file(file: UploadFile = File(...)):
+    file_bytes = await file.read()
+    file_path = f"{file.filename}"
+
+    storage.save_file(file_path, file_bytes)
+
+    return {"filename": file.filename, "message": "File uploaded successfully"}
+
+@app.get("/files/{filename}")
+def get_file(filename: str):
+    try:
+        file_bytes = storage.get_file(filename)
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="File not found")
+
+    return StreamingResponse(
+        iter([file_bytes]),
+        media_type="application/octet-stream",
+        headers={"Content-Disposition": f"attachment; filename={filename}"}
+    )
