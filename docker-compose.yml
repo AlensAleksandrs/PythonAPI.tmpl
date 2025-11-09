@@ -16,3 +16,12 @@ services:
     restart: unless-stopped
     ports:
       - "6379:6379"
+
+  worker:
+    build: .
+    container_name: worker
+    restart: unless-stopped
+    command: celery -A celery_worker.celery_app worker --loglevel=info
+    depends_on:
+      - redis
+    env_file: .env
